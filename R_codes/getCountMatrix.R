@@ -79,7 +79,21 @@ merged_samples_count <- merge(sample_list_filt[[1]], c(sample_list_filt[[2]], sa
                             merge.data = TRUE)
 
 colnames(merged_samples_count)
-saveRDS(merged_samples_count, '~/scLMM/set1_merged_samples_count.rds')
+merged_samples_count = readRDS('~/scLMM/set1_merged_samples_count.rds')
+
+dat <- readRDS(file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.rds")
+dat <- CreateSeuratObject(dat)
+sample_info = sapply(strsplit(colnames(dat), '_'), function(x) paste0(x[1], '_' ,x[2]))
+sample_info[sample_info=='DA_10WK'] = 'DA_02'
+strain_info = sapply(strsplit(colnames(dat), '_'), '[[', 1)
+table(sample_info)
+dat$sample = sample_info
+dat$strain = strain_info
 
 
+library(SeuratDisk)
+SaveH5Seurat(dat, filename = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5seurat", overwrite = TRUE)
+source_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5seurat"
+dest_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5ad"
+Convert(source_file, dest_file, assay="RNA", overwrite = TRUE)
 

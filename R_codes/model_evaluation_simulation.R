@@ -124,7 +124,8 @@ for (i in 1:length(genelist)){
     } else if(MODEL == 'LOG_LM'){
     y = log(Y[genelist[i],]+1e-100) #LM data - log normalization
     model = lm(y ~ design + 1) # LM model
-  }
+    
+    }
   
   res = residuals(model)
   res.matrix[i,] = res
@@ -133,9 +134,24 @@ for (i in 1:length(genelist)){
 }
 
 colnames(res.matrix) = colnames(Y)
-rownames(res.matrix) = rownames(Y)
+rownames(res.matrix) = rownames(Y)s
 get_head(res.matrix)
 
+#### to evaluate the performance of GLMM-GLM models, we need to have at least 3 sources of variation 
+# a technical one to account for using mixed model (the fitted values will be used to control for in the GLM)
+# two biological ones - one will be used as a covariate in the GLM - like strain
+# the second biological covariate will be designed to be captured within the residuals
+
+## can we look into the residuals of mixed models? how reliable are they?
+
+if (MODEL == 'POIS_GLMM'){
+  model <- glmer(formula = y ~ 1 + (1 | design), family = family)
+  summary(glmm.fit)
+  #results_list[[genelist[i]]] = glmm.fit
+  fitted_val_df$gene_RE_fit = fitted(glmm.fit)
+  colnames(fitted_val_df)[ncol(fitted_val_df)] = genelist[i]
+  if(!is.null(glmm.fit@optinfo$conv$lme4$messages)) model_fit_errors[i]=1
+}
 
 ################## Saving and importing data ############
 #saveRDS(coef.matrix, paste0('~/scLMM/GLM_Results/single_step/coef_mat_simulation_',MODEL,'.rds')) 
@@ -150,6 +166,15 @@ head(coef.matrix,20)
 #pca.res = prcomp(res.matrix)
 # saveRDS(pca.res, paste0('~/scLMM/GLM_Results/single_step/residual_PCA_simulation_',MODEL,'.rds')) 
 pca.res = readRDS(paste0('~/scLMM/GLM_Results/single_step/residual_PCA_simulation_',MODEL,'.rds')) 
+
+################## PCA score and loadings ##################
+score_matrix = data.frame(pca.res$rotation)
+loading_matrix = pca.res$x
+get_head(score_matrix)
+num_PCs = 10 #### re-run the varimax with this value
+sum(rownames(score_matrix) != meta_data$Cell)
+score_matrix_2 = cbind(score_matrix[,1:num_PCs], meta_data)
+sum(rownames(loading_matrix) != gene_info$Gene)
 
 #######################################################################################
 ######## evaluating the reason for getting many NA values for the NB GLM model ########
@@ -168,12 +193,6 @@ summary(sumExp_non_NA_genes)
 head(coef.matrix[rowSums(is.na(coef.matrix)) > 0,])
 ########################################################################
 
-
-score_matrix = data.frame(pca.res$rotation)
-loading_matrix = pca.res$x
-get_head(score_matrix)
-
-num_PCs = 20 #### re-run the varimax with this value
 ### varimax PCA
 
 res.scaled <- ScaleData(CreateSeuratObject(res.matrix))
@@ -182,9 +201,8 @@ get_head(res.scaled)
 get_head(loading_matrix)
 rot_data <- get_varimax_rotated(res.scaled, loading_matrix[,1:num_PCs])
 
-
 ###########################################################################################
-################# evaluating the non-rotated PCA results ##################################
+################# visualizing the non-rotated PCA results ##################################
 ####### refining the cell ID information of the residual PCA results ####### 
 screeplot(pca.res, npcs = 50)
 residual_pca_df = data.frame(score_matrix[,1:num_PCs], cell_ID=row.names(score_matrix))
@@ -195,13 +213,18 @@ head(residual_pca_df)
 
 ggplot(residual_pca_df, aes(PC1, PC2, color=Batch))+geom_point()+theme_bw() 
 ggplot(residual_pca_df, aes(PC1, PC2, color=Group))+geom_point()+theme_bw() 
+ggplot(residual_pca_df, aes(PC1, PC3, color=Group))+geom_point()+theme_bw() 
+ggplot(residual_pca_df, aes(PC1, PC6, color=Group))+geom_point()+theme_bw() 
+ggplot(residual_pca_df, aes(PC1, PC8, color=Group))+geom_point()+theme_bw() 
+
+
 ggplot(residual_pca_df, aes(PC1, PC2, color=ExpLibSize))+geom_point()+theme_bw()
 ggplot(residual_pca_df, aes(PC1, PC2, color=sizeFactor))+geom_point()+theme_bw()
 ###########################################################################################
 
 
-#######################################################################################
-################# evaluating the rotated PCA results ##################################
+
+############### varimax PCA score annd loadings ##################
 rotated_loadings <- rot_data$rotLoadings
 rotated_scores <- data.frame(rot_data$rotScores)
 colnames(rotated_scores) = paste0('Varimax_', 1:ncol(rotated_scores))
@@ -215,11 +238,45 @@ sum(rownames(umap_df) != rownames(rotated_scores))
 colnames(umap_df) = c('UMAP_1', 'UMAP_2')  
 rotated_scores = cbind(rotated_scores, umap_df)
 head(rotated_scores)
+######################################################
+
+### evaluating the matching based on PCA factors
+loading_matrix_2 = cbind(loading_matrix[,1:num_PCs], gene_info)
+
+### evaluating the matching based on Varimax-PCA factors
+loading_matrix_2 = cbind(rotated_loadings[,1:num_PCs], gene_info)
+
+
+loading_matrix_2 = loading_matrix_2[,!colnames(loading_matrix_2) %in% c('Gene','BaseGeneMean','OutlierFactor')]
+head(loading_matrix_2)
+cor_matrix_loading = cor(loading_matrix_2)
+PC_colnames = paste0('PC', 1:num_PCs)
+cor_matrix_loading_sub = cor_matrix_loading[!colnames(cor_matrix_loading) %in% PC_colnames,colnames(cor_matrix_loading) %in% PC_colnames]
+
+pheatmap(cor_matrix_loading_sub,color=colorRampPalette(c("navy", "white", "red"))(50), display_numbers = TRUE)
+
+PCs_tocheck = colSums(abs(cor_matrix_loading_sub))>median(colSums(abs(cor_matrix_loading_sub)))
+columns_tocheck = c(PC_colnames[PCs_tocheck],colnames(cor_matrix_loading)[!colnames(cor_matrix_loading) %in% PC_colnames])
+
+panel.points<-function(x,y) points(x,y,cex=0.2)
+pairs(loading_matrix_2[,colnames(loading_matrix_2) %in% columns_tocheck], 
+      lower.panel=panel.points, upper.panel=panel.points)
+
+
+get_max_cor <- function(covariate_name) { max(abs(cor_matrix_loading_sub[covariate_name,]))}
+score = (get_max_cor('DEFacGroup1')* get_max_cor('DEFacGroup2') * get_max_cor('DEFacGroup3'))/(get_max_cor('BatchFacBatch1')*get_max_cor('BatchFacBatch2'))
+print(score)
+
+#######################################################################################
+################# Visualizing the rotated PCA results ##################################
 
 library(viridis)
 #pdf('~/scLMM/GLM_Results/single_step/residual_varimaxTop20PC_glm_sampleDirect_strain_controled_poisson.pdf', width = 14.5, height = 5)
 #pdf('~/scLMM/GLM_Results/single_step/residual_varimaxTop20PC_glm_sampleDirect_strain_controled_NB.pdf', width = 14.5, height = 5)
 #pdf('~/scLMM/GLM_Results/single_step/residual_varimaxTop20PC_lm_sample_strain_logNorm.pdf', width = 14.5, height = 5)
+
+ggplot(rotated_scores, aes(Varimax_1, Varimax_7, color=Group))+geom_point()+theme_bw() 
+ggplot(rotated_scores, aes(Varimax_1, Varimax_10, color=Group))+geom_point()+theme_bw() 
 
 for(i in 2:21){
   rotated_scores$Var_to_check = rotated_scores[,i]
@@ -246,7 +303,10 @@ head(coef.matrix)
 ggplot(coef.matrix, aes(Batch1, BatchFacBatch1))+geom_point(size=1.5, alpha=0.5)+
   theme_classic()+ggtitle(paste0('Batch1 Est-coefficient correlation with true value - ', MODEL))
   #geom_text(aes(label=ifelse(var15_load>0.1 | var15_load<(-0.1)|LEW_strain>45|LEW_strain<(-45) ,as.character(genes),'')),hjust=0,vjust=0,size=3)
+ggplot(coef.matrix, aes(Batch1, BatchFacBatch2))+geom_point(size=1.5, alpha=0.5)+
+  theme_classic()+ggtitle(paste0('Batch1 Est-coefficient correlation with true value - ', MODEL))
 
+cor(coef.matrix$Batch1, coef.matrix$BatchFacBatch1)
 ########
 
 rotated_loadings = as.data.frame(rotated_loadings)
