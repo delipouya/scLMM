@@ -1,5 +1,5 @@
 ### loading the required libraries
-source('Codes/Functions.R')
+source('~/RatLiver/Codes/Functions.R')
 Initialize()
 
 #### new syncronized thresholds: 
@@ -91,9 +91,55 @@ dat$sample = sample_info
 dat$strain = strain_info
 
 
+##### adding the cluster information to the metadata
+library(Seurat)
+old_data_scClustViz_object <- "~/RatLiver/Results/old_samples/for_scClustViz_mergedOldSamples_mt40_lib1500_MTremoved.RData"
+load(old_data_scClustViz_object)
+merged_samples <- your_scRNAseq_data_object
+rm(your_scRNAseq_data_object); gc()
+merged_samples$cluster = as.character(sCVdata_list$res.0.6@Clusters)
+merged_samples$sample_name = ifelse(merged_samples$orig.ident=='rat_DA_01_reseq', 'DA-1', 
+                                    ifelse(merged_samples$orig.ident=='rat_DA_M_10WK_003', 'DA-2',
+                                           ifelse(merged_samples$orig.ident=='rat_Lew_01', 'LEW-1', 'LEW-2')))
+merged_samples$strain = sapply(str_split(colnames(merged_samples), '_'), '[[', 2)
+processed_df = data.frame(cluster=merged_samples$cluster, 
+                          sample_name=merged_samples$sample_name, 
+                          strain=merged_samples$strain, 
+                          cell_id=colnames(merged_samples))
+###### refining the cell ID of the processed data ######
+sample_info = sapply(strsplit(processed_df$cell_id, '_'), function(x) paste0(x[2], '_' ,x[3]))
+pure_cell_id = sapply(strsplit(processed_df$cell_id, '_'), function(x) paste0(x[length(x)]))
+sample_info[sample_info=='DA_M'] = 'DA_02'
+sample_info[sample_info=='Lew_01'] = 'LEW_01'
+sample_info[sample_info=='Lew_02'] = 'LEW_02'
+table(sample_info)
+processed_df$cell_id_2 = paste0(sample_info, '_', pure_cell_id)
+dim(processed_df)
+
+##### refining the cell IDs of the raw data ######
+dat_metadata = data.frame(dat@meta.data)
+head(dat_metadata)
+sum(!rownames(dat_metadata) %in% processed_df$cell_id_2)
+
+sample_info = sapply(strsplit(rownames(dat_metadata), '_'), function(x) paste0(x[1], '_' ,x[2]))
+sample_info[sample_info=='DA_10WK'] = 'DA_02'
+table(sample_info)
+pure_cell_id = sapply(strsplit(rownames(dat_metadata), '_'), function(x) paste0(x[length(x)]))
+dat_metadata$cell_id_2 = paste0(sample_info, '_', pure_cell_id)
+sum(!dat_metadata$cell_id_2 %in% processed_df$cell_id_2)
+
+merged_df = merge(dat_metadata, processed_df, by.x='cell_id_2', by.y='cell_id_2')
+head(merged_df)
+sum(merged_df$cell_id_2 != dat_metadata$cell_id_2) ### the order of rows in the merged dataframe is conserved 
+### add the cluster information to the raw data's metadata dataframe
+dat_metadata$cluster = merged_df$cluster
+dat$cluster  = dat_metadata$cluster
+dat$refined_cell_ID = dat_metadata$cell_id_2
+  
+  
 library(SeuratDisk)
-SaveH5Seurat(dat, filename = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5seurat", overwrite = TRUE)
-source_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5seurat"
-dest_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData.h5ad"
+SaveH5Seurat(dat, filename = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData_2.h5seurat", overwrite = TRUE)
+source_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData_2.h5seurat"
+dest_file = "~/scLMM/input_data_designMat/inputdata_rat_set1_countData_2.h5ad"
 Convert(source_file, dest_file, assay="RNA", overwrite = TRUE)
 

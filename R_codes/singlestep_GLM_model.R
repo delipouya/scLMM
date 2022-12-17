@@ -112,7 +112,7 @@ head(coef.matrix)
 ################################################################################
 ####### Applying factor analysis to the resulting residuals  ########### 
 ################################################################################
-#res.matrix = readRDS('~/scLMM/GLM_Results/single_step/residual_mat_glm_sampleDirect_strain_controled_poisson.rds') # GLM (strain+strain) - poisson
+res.matrix = readRDS('~/scLMM/GLM_Results/single_step/residual_mat_glm_sampleDirect_strain_controled_poisson.rds') # GLM (strain+strain) - poisson
 #res.matrix = readRDS('~/scLMM/GLM_Results/single_step/residual_mat_glm_sampleDirect_strain_controled_NB.rds') # GLM (strain+strain) - NB
 res.matrix = readRDS('~/scLMM/GLM_Results/single_step/residual_mat_lm_sample_strain_logNorm.rds') # LM (strain+sample) - log norm data 
 
