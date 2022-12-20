@@ -51,9 +51,9 @@ num_genes = data_sub.shape[1]
 num_vars = 1 # number of variables in the design matrix - strain
 
 ### sample 100 genes and subset the data
-#num_genes = 100
-#gene_idx = random.sample(range(0, data_numpy.shape[1]), num_genes)
-#data_numpy = data_numpy[:, gene_idx]
+num_genes = 100
+gene_idx = random.sample(range(0, data_numpy.shape[1]), num_genes)
+data_numpy = data_numpy[:, gene_idx]
 
 
 y = data_numpy
@@ -64,19 +64,20 @@ x = y_strain
 ### make an empty array to store the p-values and coefficients
 pvalue = []
 coefficient = []
-yhat = []
-tvalues = []
-resid_pearson = []
-resid_deviance = []
-resid_response = []
-resid_working = []
 fittedvalues = []
-#nobs = []
-#models = []
-
-pearson_chi2 = []
 deviance = []
 null_deviance = []
+
+#yhat = []
+#tvalues = []
+#resid_pearson = []
+#resid_deviance = []
+#resid_response = []
+#resid_working = []
+#nobs = []
+#models = []
+#pearson_chi2 = []
+
 
 ### time the fitting process
 start_time = time.time()
@@ -90,17 +91,17 @@ for i in range(len(y[0])):
     #models.append([result])
     coefficient.append([result.params])
     pvalue.append([result.pvalues]) ## yhat == fittedvalue == mu
-    yhat.append([result.predict()])
     fittedvalues.append([result.fittedvalues])
-
-    # nobs.append([result.nobs])
+    '''
+    yhat.append([result.predict()])
+    nobs.append([result.nobs])
     tvalues.append([result.tvalues])
     resid_pearson.append([result.resid_pearson])
     resid_deviance.append([result.resid_deviance])
     resid_response.append([result.resid_response])
     resid_working.append([result.resid_working])
-    
     pearson_chi2.append([result.pearson_chi2])
+    '''
     deviance.append([result.deviance])
     null_deviance.append([result.null_deviance])
 
@@ -109,10 +110,11 @@ print('time to fit the model: ', end_time - start_time)
 
 pvalue = np.asarray(pvalue).reshape(num_genes, num_vars)
 coefficient = np.asarray(coefficient).reshape(num_genes, num_vars)
-tvalues = np.asarray(tvalues).reshape(num_genes, num_vars)
-
-yhat = np.asarray(yhat).reshape(num_genes, num_cells)
 fittedvalues = np.asarray(fittedvalues).reshape(num_genes, num_cells)
+
+'''
+yhat = np.asarray(yhat).reshape(num_genes, num_cells)
+tvalues = np.asarray(tvalues).reshape(num_genes, num_vars)
 resid_pearson = np.asarray(resid_pearson).reshape(num_genes, num_cells)
 resid_deviance = np.asarray(resid_deviance).reshape(num_genes, num_cells)
 resid_response = np.asarray(resid_response).reshape(num_genes, num_cells)
@@ -120,6 +122,7 @@ resid_working = np.asarray(resid_working).reshape(num_genes, num_cells)
 #nobs = np.asarray(nobs).reshape(num_genes, 1)
 
 pearson_chi2 = np.asarray(pearson_chi2).reshape(num_genes, 1)
+'''
 deviance = np.asarray(deviance).reshape(num_genes, 1)
 null_deviance = np.asarray(null_deviance).reshape(num_genes, 1)
 
@@ -141,7 +144,8 @@ for i in range(len(variable_names)):
 from statsmodels.graphics.api import abline_plot
 import seaborn as sns
 
-i = 200 ## gene index
+
+i = 50 ## gene index
 result = models[i][0] 
 fittedvalues_i = fittedvalues[i]
 y_i = y[:, i]
@@ -154,6 +158,8 @@ abline_plot(model_results=line_fit, ax=ax, alpha=0.5)
 ax.set_title('Model Fit Plot')
 ax.set_ylabel('Observed values')
 ax.set_xlabel('Fitted values')
+
+
 
 sns.jointplot(fittedvalues_i, y[:, i], kind='scatter', stat_func=None, color='b', height=4)
 sns.set_context(font_scale=0.9)                                                  
@@ -179,6 +185,7 @@ plt.xlabel('Fitted values')
 plt.ylabel('Pearson Residuals')
 ## change the size of the text in plot
 plt.rc('font', size=3)
+plt.show()
 
 from scipy import stats
 fig, ax = plt.subplots()
@@ -395,4 +402,5 @@ plt.title('Variance explained by each PC')
 plt.xlabel('PC')
 plt.ylabel('Variance explained')
 plt.show()
-   
+
+

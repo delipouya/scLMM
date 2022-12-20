@@ -51,9 +51,9 @@ num_genes = data_sub.shape[1]
 num_vars = 1 # number of variables in the design matrix - strain
 
 ### sample 100 genes and subset the data
-#num_genes = 100
-#gene_idx = random.sample(range(0, data_numpy.shape[1]), num_genes)
-#data_numpy = data_numpy[:, gene_idx]
+# num_genes = 100
+# gene_idx = random.sample(range(0, data_numpy.shape[1]), num_genes)
+# data_numpy = data_numpy[:, gene_idx]
 
 
 y = data_numpy
@@ -64,19 +64,19 @@ x = y_strain
 ### make an empty array to store the p-values and coefficients
 pvalue = []
 coefficient = []
-yhat = []
-tvalues = []
-resid_pearson = []
-resid_deviance = []
-resid_response = []
-resid_working = []
 fittedvalues = []
-#nobs = []
-#models = []
-
-pearson_chi2 = []
 deviance = []
 null_deviance = []
+
+#yhat = []
+#tvalues = []
+#resid_pearson = []
+#resid_deviance = []
+#resid_response = []
+#resid_working = []
+#nobs = []
+#models = []
+#pearson_chi2 = []
 
 ### time the fitting process
 start_time = time.time()
@@ -86,33 +86,36 @@ for i in range(len(y[0])):
     model = sm.GLM(y_a_gene, x, family=sm.families.Poisson())
     result = model.fit()
     #print(result.summary())
-    
     #models.append([result])
     coefficient.append([result.params])
     pvalue.append([result.pvalues]) ## yhat == fittedvalue == mu
-    yhat.append([result.predict()])
     fittedvalues.append([result.fittedvalues])
+    deviance.append([result.deviance])
+    null_deviance.append([result.null_deviance])
 
-    # nobs.append([result.nobs])
+    '''
+    yhat.append([result.predict()])
+    nobs.append([result.nobs])
     tvalues.append([result.tvalues])
     resid_pearson.append([result.resid_pearson])
     resid_deviance.append([result.resid_deviance])
     resid_response.append([result.resid_response])
     resid_working.append([result.resid_working])
-    
     pearson_chi2.append([result.pearson_chi2])
-    deviance.append([result.deviance])
-    null_deviance.append([result.null_deviance])
+    '''
 
 end_time = time.time()
 print('time to fit the model: ', end_time - start_time)
 
 pvalue = np.asarray(pvalue).reshape(num_genes, num_vars)
 coefficient = np.asarray(coefficient).reshape(num_genes, num_vars)
-tvalues = np.asarray(tvalues).reshape(num_genes, num_vars)
-
-yhat = np.asarray(yhat).reshape(num_genes, num_cells)
 fittedvalues = np.asarray(fittedvalues).reshape(num_genes, num_cells)
+deviance = np.asarray(deviance).reshape(num_genes, 1)
+null_deviance = np.asarray(null_deviance).reshape(num_genes, 1)
+
+'''
+yhat = np.asarray(yhat).reshape(num_genes, num_cells)
+tvalues = np.asarray(tvalues).reshape(num_genes, num_vars)
 resid_pearson = np.asarray(resid_pearson).reshape(num_genes, num_cells)
 resid_deviance = np.asarray(resid_deviance).reshape(num_genes, num_cells)
 resid_response = np.asarray(resid_response).reshape(num_genes, num_cells)
@@ -120,12 +123,12 @@ resid_working = np.asarray(resid_working).reshape(num_genes, num_cells)
 #nobs = np.asarray(nobs).reshape(num_genes, 1)
 
 pearson_chi2 = np.asarray(pearson_chi2).reshape(num_genes, 1)
-deviance = np.asarray(deviance).reshape(num_genes, 1)
-null_deviance = np.asarray(null_deviance).reshape(num_genes, 1)
+'''
+
 
 #### save the results to csv files
-variable_lists = [coefficient, pvalue, tvalues, yhat, fittedvalues, resid_pearson, resid_deviance, resid_response, resid_working, pearson_chi2, deviance, null_deviance]
-variable_names = ['coefficient', 'pvalue', 'tvalues', 'yhat', 'fittedvalues', 'resid_pearson', 'resid_deviance', 'resid_response', 'resid_working', 'pearson_chi2', 'deviance', 'null_deviance']
+variable_lists = [coefficient, pvalue, fittedvalues, deviance, null_deviance]
+variable_names = ['coefficient', 'pvalue', 'fittedvalues', 'deviance', 'null_deviance']
 
 for i in range(len(variable_lists)):
     np.savetxt('GLM_FA_res/' + variable_names[i] + ".csv", variable_lists[i], delimiter=",")
