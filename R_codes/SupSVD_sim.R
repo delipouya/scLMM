@@ -17,7 +17,7 @@ library(MASS)
 library(reshape2)
 library(mltools)
 library(data.table)
-library('dbarts')r
+library('dbarts')
 library(splatter)
 library(scater)
 library(purrr) # v. 0.3.4
