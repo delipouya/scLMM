@@ -33,12 +33,12 @@ install.packages(packageurl, repos=NULL, type="source")
 install.packages('Seurat')
 
 .libPaths()
-pkg = "scater"
-pkg = 'ggbeeswarm'
-pkg = 'assertthat'
+pkg = "xopen"
+pkg = 'devtools'
+pkg = 'textshaping' ragg pkgdown
 pkg = 'dbplyr'
 pkg = 'vipor'
-pkg = 'annotationDB'
+pkg = 'pkgdown'
 
 devtools::install_github("lc5415/HDATDS")
 library(reticulate)
@@ -46,6 +46,7 @@ py_install("numpy")
 
 
 BiocManager::install(pkg)
+
 BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
 remove.packages(c(pkg), lib = .libPaths()[1])
 remove.packages(c(pkg), lib = .libPaths()[2])
