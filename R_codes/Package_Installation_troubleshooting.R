@@ -15,13 +15,13 @@ head(pkgs.to.remove)
 sapply(pkgs.to.remove, remove.packages, lib = path.lib)
 
 
-
+devtools::install_github('RfastOfficial/Rfast')
 library(BiocManager)
 BiocManager::install(pkgs = ,version = '3.15',lib =.libPaths()[1], force = TRUE)
 library(devtools)
 library(nebula)
-
-
+BiocManager::install()
+library(RcppZiggurat)
 
 packageurl<-"https://cran.r-project.org/src/contrib/Archive/nloptr/nloptr_2.0.0.tar.gz"
 packageurl<-'https://cran.r-project.org/src/contrib/Archive/SeuratObject/SeuratObject_4.0.4.tar.gz'
@@ -35,16 +35,33 @@ install.packages('Seurat')
 .libPaths()
 pkg = "xopen"
 pkg = 'devtools'
-pkg = 'textshaping' ragg pkgdown
+pkg = c('textshaping', 'ragg', 'pkgdown')
 pkg = 'dbplyr'
-pkg = 'vipor'
-pkg = 'pkgdown'
+pkg = 'combinat'
+pkg = 'MCMCprecision'#'fontquiver'
 
+i = 10
+pkgs = c('numDeriv', 'ggplotify','interactiveDisplayBase', 'AnnotationHub', 
+         'annotate', 'GSEABase', 'genefilter', 'ExperimentHub', 'scran')
+pkg = pkgs[i]
+pkg = 'ggtree'
+pkg = 'singleCellTK'
+BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
+
+library(pkg)
+BiocManager::install("ggtree")
+
+install.packages("RcppZiggurat")
+library(RcppZiggurat)
 devtools::install_github("lc5415/HDATDS")
 library(reticulate)
 py_install("numpy")
 
+devtools::install_github("lhe17/nebula")
+install.packages("nebula", repos="http://R-Forge.R-project.org")
 
+install.packages("Rfast")
+library(Rfast)
 BiocManager::install(pkg)
 
 BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
@@ -52,6 +69,7 @@ remove.packages(c(pkg), lib = .libPaths()[1])
 remove.packages(c(pkg), lib = .libPaths()[2])
 remove.packages(c(pkg), lib = .libPaths()[3])
 remove.packages(c(pkg), lib = .libPaths()[4])
+
 
 #https://github.com/astamm/nloptr/issues/40
 #https://stackoverflow.com/questions/37425509/trouble-installing-nloptr-package-on-r-3-3-0
