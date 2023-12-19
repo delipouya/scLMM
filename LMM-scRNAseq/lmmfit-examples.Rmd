@@ -1,0 +1,502 @@
+---
+title: "LMM for single-cell RNA-seq differential expression analysis"
+author: "Changjiang Xu"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  pdf_document: 
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+  html_document: 
+    keep_tex: yes
+    toc: yes
+  html_notebook: default
+  word_document: default
+abstract: " "
+header-includes: \usepackage{xcolor, colortbl, rotating, graphicx, caption, subcaption}
+---
+
+<!--comment
+Loading libraries
+Setting work directories
+-->
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Linear mixed-effects models
+
+Consider a linear mixed-effects model (LMM),
+\begin{equation} \label{lmm}
+y = X\beta + Zb + \epsilon,
+\end{equation}
+where $y$ is an $n\times 1$ vector of observations, $X$ is an $n\times p$ design matrix for fixed effects $\beta$, $Z$ is an $n\times q$ design matrix for random effects $b$, and $\epsilon$ is an $n\times 1$ vector of residual errors. The random effects may contain various effects such as main effects, interation effects and nested effects. Hence the random effects term can be rewritten as a sum of $K$ various random effects:
+\begin{equation} \label{lmmzb}
+Zb = Z_1 b_1 + \cdots + Z_K b_K,
+\end{equation}
+where $Z=[Z_1,\ldots,Z_K]$, $b=[b^T_1,\ldots,b^T_K]^T$, and $Z_i$ is an $n\times q_i$ matrix. The superscript $T$ means a tanspose of vector or matrix. The basic assumptions include:
+
+* The random vectors $b_i$ and $\epsilon$ are mutually uncorrelated and have mean zero and covariance matrices 
+$$Cov(b_i) = \sigma^2_iI_{q_i}, \quad Cov(b_i, b_j) = \mathbf{0}, ~i\neq j.$$
+$$Cov(\epsilon) = \sigma^2 I_n , \quad Cov(b_i, \epsilon) = \mathbf{0}.$$
+Here $\sigma^2_i$ and $\sigma^2$ are unknown parameters, called variance components, $\mathbf{0}$ is a vector or matrix of zero elements, and $I_n$ is an $n\times n$ identity matrix. An non-zero mean of the random effects is considered as a fixed effect included in $\beta$. 
+* The design matrix $X$ is of full rank, satisfying conditions of estimability for the parameters. 
+
+
+
+# Functions for LMM fit and test
+
+## LMM fit
+
+Functions, lmmfit and lmmfitSS, fit LMM by restricted maximum likelihood (REML) with Fisher scoring (FS) iterative algorithm. lmmfit and lmmfitSS use the same algorithm to fit LMM, but their inputs are different. lmmfit uses $X$, $Y$ and $Z$ as input, while lmmfitSS uses summary statistics (SS) of correlation relationship: $X^TY$, $Z^TX$ and $Z^TY$ as input. Computation in lmmfitSS doesn't depend on the sample size (the number of cells for scRNA-seq data). So lmmfitSS needs less computer memory. We can run LMMfitSS in a single personal computer for a large scRNA-seq data. Both functions work efficiently and very fast only when the numbers of fixed and random effects are not too large, e.g., less than 100.
+
+### lmmfit
+
+**Usage**
+
+*lmmfit(Y, X, Z, d, s0 = NULL, method = "REML-FS", max.iter = 50, epsilon = 1e-5)*
+
+**Arguments**
+
+* $Y=[Y_1, \ldots, Y_m]$, $n\times m$ matrix of observed measurements. $Y_j$ is the observation of the $j$-th feature, $j=1,\ldots,m$. For scRNA-seq data, $Y$ is a matrix of normalized gene expressions. The rows and columns correspond to samples (cells) and features (genes), respectively.
+* $X$, design matrix for fixed effects.
+* $Z = [Z_1, \ldots, Z_K]$,  design matrix for random effects. $Z_k$, $k=1,\ldots K$, is the design matrix for the $k$-th type of random effects. 
+* $d = (d_1, \ldots, d_K)$, $d_k$ is the number of columns in $Z_k$.
+* $s_0$, $(K+1)$-dimensional vector of initial values of variance components. The first $K$ elements correspond to variance components of random effects, $\sigma_k^2$, $k=1,\ldots K$. The last element corresponds to variance of residual errors, $\sigma^2$.
+* $max.iter$, maximum number of iteration in the algorithm.
+* $epsilon$, upper bound for absolute value of the first partial derivative of log likelihood.
+
+**Value**, a list containing the following components:
+
+* $dlogL$, matrix of the first partial derivative of log likelihood, columns corresponding to features.
+* $niter$, vector of the number of iterations for each feature. 
+* $coef$, matrix of the estimated fixed effects. Each column is the estimated fixed effects for one feature.
+* $cov$, 3-dimensional array of covariance matrix of the estimated fixed effects for each feature. 
+* $df$, residual degree of freedom in the linear model. 
+* $theta$, matrix of the estimated variance components. Each column corrsponds to one feature. The last row contains the estimated variances of residual errors for each feature. 
+
+
+### lmmfitSS
+
+**Usage**
+
+*lmmfitSS(XY, ZX, ZY, ZZ, XXinv, Ynorm, n, d, s0 = NULL, method = "REML-FS", max.iter = 50, epsilon = 1e-5)*
+
+**Arguments**
+
+* $XY = X^TY$, $ZX = Z^TX$, $ZY = Z^TY$, and $ZZ=Z^TZ$.
+* $XXinv = (X^TX)^{-1}$.
+* $Ynorm = (||Y_1||^2, \ldots, ||Y_m||^2)$, where $Y_j$, $j=1, \ldots, m$, is the $j$-th column of $Y$.
+* $n$ is the sample size, the number of rows of $Y$.
+* $d = (d_1, \ldots, d_K)$, $d_k$ is the number of columns in $Z_k$.
+* $s_0$, $(K+1)$-dimensional vector of initial values of variance components. The first $K$ elements correspond to variance components of random effects, $\sigma_k^2$, $k=1,\ldots K$. The last element corresponds to variance of residual errors, $\sigma^2$.
+* $max.iter$, maximum number of iteration in the algorithm.
+* $epsilon$, upper bound for absolute value of the first partial derivative of log likelihood.
+
+**Value**, a list containing the same components as the function lmmfit.
+
+
+## LMM test
+
+Function, lmmtest, conducts statistical tests for fixed effects or contrasts of fixed effects. lmmtest computes t-statistic values and p-values by use of output from LMM fit.
+
+**Usage**
+
+*lmmtest(fit, index, contrast = NULL, alternative = c("two.sided", "less", "greater"))*
+
+**Arguments**
+
+* $fit$, output from lmmfit or lmmfitSS.
+* $index$, integer or character vector indicating which fixed effects are to be tested. By default index consists of all of the fixed effects. Ignored if contrast is not NULL.
+* $contrast$, matrix comprising contrasts of fixed effects to be tested. Each column corresponds to a contrast.
+* alternative, a character string specifying the alternative hypothesis, one of "two.sided", "greater" or "less".
+
+**Value**, matrix consisting of t-values (column names with suffix of "_t") and p-values (column names with suffix of "_pvalue") for each test. The rows correspond to each feature or gene.
+
+
+
+
+
+
+# Examples
+
+## Rat-set1 differential expression analysis
+
+### Data preparation
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+dirUser <- paste0("/Users/", Sys.info()["user"])
+dirDropbox <- paste0("/Users/", Sys.info()["user"], "/", grep("Dropbox", dir(dirUser), value = TRUE))
+dirDropboxDocs <- paste0(dirDropbox, "/", grep("files", dir(dirDropbox), value = TRUE), "/Documents")
+dirWork <- grep("scMM/Demo", list.dirs(dirDropboxDocs), value = TRUE)
+#setwd(dirDropboxDocs)
+#setwd(dirWork)
+
+dirWork = '~/scLMM/LMM-scRNAseq/'
+setwd(dirWork)
+dir(dirWork)
+```
+
+```{r}
+library(Matrix)
+library(MASS)
+
+##load data
+##Y: counts
+load("rat_set1_XYZ.RData")
+
+##number of genes per cell
+nGenes <- colSums(Y)
+
+rm(X, Y, Z)
+
+##Y: log2(t(counts) + 1)
+load("rat_set1_XZlogY.RData")
+
+##design matrix for fixed effects
+##cell clusters
+dim(X)
+X <- cbind(X, log_nGenes = log(nGenes))
+head(X)
+
+##design matrix for random effects
+strainLew <- as.factor(Z)
+Z <- model.matrix(~ 0 + strainLew)
+head(Z)
+
+##dimemsion of random effects
+d <- ncol(Z)
+
+##log2(t(counts) + 1)
+dim(Y)
+##Operating on "matrix" or "array"  is faster than "dgCMatrix"!!!
+Y <- as.matrix(Y)
+
+```
+
+### LMM fit
+
+```{r echo=FALSE, message = FALSE, warning = FALSE}
+source("~/scLMM/LMM-scRNAseq/lmmfit.R")
+source("~/scLMM/LMM-scRNAseq/lmmfitSS.R")
+source("~/scLMM/LMM-scRNAseq/lmmtest.R")
+source("~/scLMM/LMM-scRNAseq/qqpvalue.R")
+```
+
+**Fit LMM by lmmfit.**
+
+```{r warning = FALSE}
+SEED <- 57774
+set.seed(SEED)
+s0 <- c(runif(length(d)), 1)
+
+t1 <- Sys.time()
+fit <- NULL
+fit <- lmmfit(Y = Y, X = X, Z = Z, d = d, s0 = s0, max.iter = 50, epsilon = 1e-5)
+t2 <- Sys.time()
+difftime(t2, t1) 
+
+str(fit)
+table(fit$niter)
+sum(abs(fit$dlogL) > 1e-3)
+```
+
+**Fit LMM by lmmfitSS.**
+
+```{r warning = FALSE}
+##input for lmmfitSS:
+##- Compute XY, ZX, ZY, ZZ, XXinv, Ynorm, n
+n <- nrow(X)
+XY <- as.matrix(t(X)%*%Y)
+ZX <- as.matrix(t(Z)%*%X)
+ZY <- as.matrix(t(Z)%*%Y)
+ZZ <- as.matrix(t(Z)%*%Z)
+XXinv <- as.matrix(ginv(t(X)%*%X))
+Ynorm <- colSums(Y*Y)
+
+rm(X, Y, Z)
+
+##Run lmmfitSS
+set.seed(SEED)
+s0 <- c(runif(length(d)), 1)
+
+t1 <- Sys.time()
+fitss <- lmmfitSS(XY, ZX, ZY, ZZ = ZZ, XXinv = XXinv, Ynorm = Ynorm, n = n, d = d, 
+		s0 = s0, max.iter = 50, epsilon = 1e-5)
+t2 <- Sys.time()
+difftime(t2, t1) 
+
+#str(fitss)
+
+##Compare lmmfit and lmmfitSS
+range(fit$dlogL - fitss$dlogL) 
+range(fit$niter - fitss$niter) 
+range(fit$theta - fitss$theta) 
+range(fit$coef - fitss$coef)
+range(fit$cov - fitss$cov)   
+```
+
+### LMM test
+
+```{r warning = FALSE}
+#####
+##Test all coefficients.
+##cluster k vs cluster 10 (intercept)
+lmm <- lmmtest(fitss)
+dim(lmm)
+head(lmm)
+#save(fitss, lmm, t1, t2, file = paste0(dirOut, "/rat_set1_lmm.RData"))
+
+pv <- lmm[, grep("pvalue", colnames(lmm))]
+pv <- pv[, grep("cluster", colnames(pv))]
+head(pv)
+
+hist(c(pv))
+
+
+#####
+##Test contrasts.
+##Specify contrasts of interest.
+nC <- 2
+C <- matrix(0, nrow(fitss$coef), nC)
+rownames(C) <- rownames(fitss$coef)
+colnames(C) <- 1:nC
+##cluster2 vs cluster1
+j <- 1
+C["cluster1", j] <- -1
+C["cluster2", j] <- 1
+colnames(C)[j] <- "cluster2-cluster1"
+
+##cluster3 vs cluster1
+j <- 2
+C["cluster1", j] <- -1
+C["cluster3", j] <- 1
+colnames(C)[j] <- "cluster3-cluster1"
+C
+
+test <- lmmtest(fitss, contrast = C)
+head(test)
+
+```
+
+### Comparison with NEBULA
+
+```{r}
+##Load the NEBULA results.
+load("rat_set1_nebula.RData")
+difftime(t2, t1)
+
+##nebula outputs
+##summary (statistics): 
+##The estimated coefficient, standard error and p-value for each predictor.
+str(negbn)
+st <- negbn$summary
+rownames(st) <- st$gene
+head(st)
+
+##The genes which the LMM fit wasn't convergent.
+table(fitss$niter)
+indexNotconverge <- (fitss$niter >= 50)
+sum(indexNotconverge)
+
+##p-values
+##NEBULA
+pnb <- as.matrix(st[, grep("p_", colnames(st))])
+head(pnb)
+
+##LMM
+plmm <- lmm[, grep("_p", colnames(lmm))]
+plmm <- plmm[, -grep("log_", colnames(plmm))]
+head(plmm)
+
+i <- (!indexNotconverge)
+
+par(mfrow = c(2, 1), mar = c(4.1,4.1,1.1,1.1))
+hist(plmm[i, -1], xlab = "LMM p-values", main = NA)
+hist(pnb[i, -1], xlab = "NEBULA pvalue", main = NA)
+
+##QQ-plot
+par(mfrow = c(2, 1), mar = c(4.1,4.1,1.1,1.1))
+qqpvalue(plmm[i, -1], main = "LMM p-values", cex.lab = 0.8, cex.main = 0.8)
+qqpvalue(pnb[i, -1], main = "NEBULA pvalue", cex.lab = 0.8, cex.main = 0.8)
+
+##number of significant DE genes
+##LMM
+sum(plmm[i, -1] <= 0.05/sum(i), na.rm = T)
+
+##NEBULA
+sum(pnb[i, -1] <= 0.05/sum(i))
+
+
+#####
+##coefficients
+bnb <- as.matrix(st[, grep("logFC", colnames(st))])
+head(bnb)
+dim(bnb)
+
+blmm <- lmm[, grep("_t", colnames(lmm))]
+blmm <- blmm[, -grep("log_", colnames(blmm))]
+head(blmm)
+dim(blmm)
+
+i <- (!indexNotconverge)
+par(mfrow = c(3,3), mar = c(4.1,4.1,1.1,1.1))
+for (j in 2:ncol(blmm)) {
+	plot(bnb[i, j], blmm[i, j], ylab = "LMM coef", xlab = "NEBULA coef")
+	mtext(gsub("_.*", "", colnames(plmm)[j]), line = -1, cex = 0.8)
+	}
+
+```
+
+## PBMC differential expression analysis
+
+### Data preparation
+
+The file, PBCMdata_ExperimentHubKang.RData, contains the preprocessed 10X droplet-based scRNA-seq PBMC data as described in vignettes of muscat package. The preprocessed dataset consists of (1) raw counts, (2) log-normalized counts, (3) cell metadata and (4) gene names. 
+
+```{r}
+##load data
+load(file = "PBCMdata_ExperimentHubKang.RData")
+
+dim(counts)
+dim(logcounts)
+dim(rowdata)
+dim(coldata)
+
+head(coldata)
+##'sample_id': unique sample identifiers
+##'cluster_id': subpopulation (cell cluster) assignments 
+##'group_id': experimental group/condition (control/treatment)
+
+##Design matrix of fixed effects
+##number of genes (the library size)
+nGenes <- colSums(counts)
+X <- model.matrix(~ 0 + log(nGenes) + cluster_id + group_id, data = coldata)
+colnames(X) <- gsub(".*_id", "", colnames(X))
+colnames(X) <- gsub("\\+", "p", colnames(X))
+colnames(X) <- gsub(" ", "_", colnames(X))
+
+dim(X) 
+head(X)
+
+
+##Design matrix for random effects
+##cell clusters
+Z <- model.matrix(~ 0 + cluster_id, data = coldata)
+colnames(Z) <- gsub(".*_id", "", colnames(Z))
+dim(Z) 
+head(Z)
+
+##dimension of random effects
+d <- c(ncol(Z))
+d
+
+rm(coldata, rowdata)
+
+
+##Normalization of counts
+##Log-transformation and transpose of counts
+##log2(1 + t(counts))
+rm(logcounts)
+
+Y <- matrix(nrow = nrow(counts), ncol = ncol(counts))
+##Divide the data into groups to reduce data size
+ngrp <- 4
+sizegrp <- round(nrow(counts)/ngrp)
+for (i in 1:ngrp){
+	j <- (1+(i-1)*sizegrp):(min(nrow(counts), i*sizegrp))
+	print(range(j))
+	Y[j, ] <- as.matrix(log2(1 + counts[j, ]))
+}
+##transpose
+Y <- t(Y)
+
+dim(Y) 
+rm(counts)
+
+```
+
+### LMM fit 
+
+```{r echo=FALSE, message = FALSE, warning = FALSE}
+#source("lmmfit.R")
+source("lmmfitss.R")
+source("lmmtest.R")
+```
+
+```{r}
+##input for lmmfitSS:
+##- Compute XY, ZX, ZY, ZZ, XXinv, Ynorm, n
+n <- nrow(X)
+XY <- as.matrix(t(X)%*%Y)
+ZX <- as.matrix(t(Z)%*%X)
+ZY <- as.matrix(t(Z)%*%Y)
+ZZ <- as.matrix(t(Z)%*%Z)
+XXinv <- as.matrix(ginv(t(X)%*%X))
+Ynorm <- colSums(Y*Y)
+
+rm(X, Y, Z)
+
+##Run lmmfitSS
+set.seed(SEED)
+s0 <- c(runif(length(d)), 1)
+
+t1 <- Sys.time()
+fitss <- lmmfitSS(XY, ZX, ZY, ZZ = ZZ, XXinv = XXinv, Ynorm = Ynorm, n = n, d = d, 
+		s0 = s0, max.iter = 50, epsilon = 1e-5)
+t2 <- Sys.time()
+difftime(t2, t1) 
+
+#str(fitss)
+```
+
+### LMM test
+
+```{r}
+##Test all of the fixed effects.
+test <- lmmtest(fitss)
+dim(test)
+head(test)
+
+##Test specified effects
+j <- c(1, 10)
+test <- lmmtest(fitss, index = j)
+head(test)
+
+##Or use the names of effects
+j <- c("log(nGenes)", "stim")
+test <- lmmtest(fitss, index = j)
+head(test)
+
+
+##Test contrasts
+##Create a contrast:
+C <- matrix(0, nrow(fitss$coef))
+rownames(C) <- rownames(fitss$coef)
+i1 <- 2; i2 <- 3
+C[i1,] <- -1
+C[i2,] <- 1
+colnames(C) <- paste0(rownames(C)[i2], " - ", rownames(C)[i1])
+C
+
+test <- lmmtest(fitss, contrast = C)
+head(test)
+
+sessionInfo()
+
+```
+
+# Discussions
+  
+* Generating the design matrices for fixed and random effects is a key step for LMM-based analysis. The LMM performance depends on the design matrices. One question is how to verify the performance of LMM-based differential expression analysis. The example given here is to verify the LMM fit and test functions and show how to use LMM for differential expression analysis.
+* Comparison with NEBULA method:
+  * lmmfit and lmmfitSS is more faster than nebula.
+  * nebula can only use one-type categorical random effect. 
+  * lmmfit and lmmfitSS work on the normalized expressions. nebula directly works on the counts. Which has a better performance needs to be verified. 
+* The LMM fitting functions, lmmfit and lmmfitSS, is scalable. Currently we only consider the restricted maximum likelihood (REML) with Fisher scoring(FS) iterative algorithm to fit the LMM. There are other algorithms such as REML with Newton–Raphson (NR), average information (AI), and expectation-maximization (EM) algorithm, and iterated MINQE (minimum norm quadratic estimation). The various algorithms have different convergence performance. 
+
