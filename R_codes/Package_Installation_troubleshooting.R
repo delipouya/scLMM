@@ -33,12 +33,12 @@ install.packages(packageurl, repos=NULL, type="source")
 install.packages('Seurat')
 
 .libPaths()
-pkg = "xopen"
-pkg = 'devtools'
+pkg = "Seurat" #Seurat
+pkg = 'ggridges' 
 pkg = c('textshaping', 'ragg', 'pkgdown')
-pkg = 'dbplyr'
-pkg = 'combinat'
-pkg = 'MCMCprecision'#'fontquiver'
+pkg = 'lazyeval'
+pkg = 'DelayedArray'
+pkg = 'DelayedMatrixStats'#'fontquiver'
 
 i = 10
 pkgs = c('numDeriv', 'ggplotify','interactiveDisplayBase', 'AnnotationHub', 
@@ -46,7 +46,9 @@ pkgs = c('numDeriv', 'ggplotify','interactiveDisplayBase', 'AnnotationHub',
 pkg = pkgs[i]
 pkg = 'ggtree'
 pkg = 'singleCellTK'
-BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
+#BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
+BiocManager::install(pkg, version = '3.18', lib =.libPaths()[1], force = TRUE)
+#testthat, xopen
 
 library(pkg)
 BiocManager::install("ggtree")
@@ -64,11 +66,23 @@ install.packages("Rfast")
 library(Rfast)
 BiocManager::install(pkg)
 
-BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
+BiocManager::install(pkg, version = '3.18', lib =.libPaths()[1], force = TRUE)
 remove.packages(c(pkg), lib = .libPaths()[1])
 remove.packages(c(pkg), lib = .libPaths()[2])
 remove.packages(c(pkg), lib = .libPaths()[3])
 remove.packages(c(pkg), lib = .libPaths()[4])
+
+Error: package ‘GenomicAlignments’ was installed before R 4.0.0: please re-install it
+Error: package or namespace load failed for ‘dbplyr’:
+Error: package ‘GSEABase’ was installed before R 4.0.0: please re-install it
+Error: package ‘progress’ was installed before R 4.0.0: please re-install it
+Error: package ‘AnnotationHub’ 2.18.0 was found, but >= 3.3.6 is required by ‘ExperimentHub’
+Error: package ‘biomaRt’ was installed before R 4.0.0: please re-install it
+Error: package ‘GenomicFeatures’ 1.38.1 was found, but >= 1.49.6 is required by ‘ensembldb’
+
+package ‘DelayedArray’ was installed before R 4.0.0: please re-install it
+
+
 
 
 #https://github.com/astamm/nloptr/issues/40
@@ -81,7 +95,19 @@ db <- CRAN_package_db()
 revdeps <- package_dependencies("Seurat", db=db, recursive=TRUE, reverse=TRUE)
 
 
+# check your package library path 
+.libPaths()
 
-install.packages("tensorflow")
-base64enc
-tfruns
+# grab old packages names
+old_packages <- installed.packages(lib.loc =  "/usr/lib/R/library")
+
+old_packages <- as.data.frame(old_packages)
+list.of.packages <- unlist(old_packages$Package)
+
+# remove old packages 
+remove.packages( installed.packages( priority = "NA" )[,1] )
+
+# reinstall all packages 
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages,function(x){library(x,character.only=TRUE)})
