@@ -1,0 +1,146 @@
+---
+title: "stim_PBMC_extra"
+output: html_document
+date: '2023-12-21'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+##### PBMC dataset #####
+#pbmc <- readRDS('LMM-scRNAseq/Data/PBMC_Lupus_Kang8vs8_data_norm.rds')
+pbmc <- readRDS("~/scLMM/LMM-scRNAseq//Data/PBMC_Lupus_Kang8vs8_data_counts.rds")
+dim(pbmc)
+pbmc = pbmc[rowSums(pbmc)!=0,colSums(pbmc)!=0]
+dim(pbmc)
+pbmc = Seurat::SCTransform(pbmc, 'originalexp')
+
+
+Y_pbmc = GetAssayData(pbmc)
+Y_pbmc = Y_pbmc[rowSums(Y_pbmc)!=0,colSums(Y_pbmc)!=0]
+
+nGenes <- colSums(Y_pbmc)
+Ylog_pbmc = t(Y_pbmc)
+#Ylog_pbmc = log2(t(Y_pbmc) + 1)
+Ylog_pbmc <- as.matrix(Ylog_pbmc)
+```
+
+
+```{r}
+##design matrix for random effects
+pbmc$cell[is.na(pbmc$cell)] = 'unknown'
+table(pbmc$cell)
+#sum(table(pbmc$cell)) == ncol(pbmc)
+Z_pbmc = data.frame(ind=pbmc$ind)
+Z_pbmc = model.matrix(~0+ind, Z_pbmc) 
+##dimemsion of random effects
+d_pbmc <- ncol(Z_pbmc)
+```
+
+
+
+## Model IV: $~ nGenes + cell + cell:stim + (1 | individual)$
+Use individual as random effect to consider correlation within the patient. 
+
+```{r}
+##design matrix for fixed effects
+X_pbmc = data.frame(stim=pbmc$stim,cell=pbmc$cell)
+X_pbmc = model.matrix(~ 0 + cell + cell:stim , X_pbmc)
+X_pbmc <- cbind(X_pbmc, log_nGenes = log(nGenes))
+
+dim(X_pbmc)
+dim(Z_pbmc)
+dim(Ylog_pbmc)
+```
+
+Fitting model IV
+```{r, warning = FALSE}
+##############################
+## **Fit LMM by lmmfit.**
+#########################
+SEED <- 57774
+set.seed(SEED)
+maxIter <- 200
+t1 <- Sys.time()
+fit <- NULL
+fit <- lmmfit(Y = Ylog_pbmc, X = X_pbmc, Z = Z_pbmc, 
+              d = d_pbmc, max.iter = maxIter, epsilon = 1e-5)
+t2 <- Sys.time()
+```
+
+
+```{r}
+difftime(t2, t1) 
+
+##number of convergences
+sum(fit$niter < maxIter)
+##number of non-convergences at epsilon = 1e-5
+sum(fit$niter == maxIter)
+##at epsilon = 1e-2
+sum(apply(abs(fit$dlogL) > 1e-2, 2, any))
+
+##variance components of random effects
+k <- 1
+range(fit$theta[k, ])
+##p-values for hypothesis tests of variance components:
+##H0: theta <=0 vs H1: theta > 0
+p <- pnorm(fit$theta[k, ]/fit$se[k, ], lower.tail = F)
+sum(p <= 0.05)
+range(p)
+
+```
+
+
+
+Testing model IV output
+```{r, warning = FALSE}
+test_org <- lmmtest(fit)
+```
+
+
+```{r}
+test <- test_org[, grep("stim", colnames(test_org))]
+test <- as.data.frame(test)
+test$stim_FDR <- p.adjust(test$`cellCD8 T cells:stimstim_pvalue`, method = "BH") 
+
+test <- test[order(test$stim_FDR),]
+sum(test$stim_FDR <= 0.05, na.rm = T)
+
+pv <- test[, grep("pvalue", colnames(test))]
+par(mfrow = c(2,1), mar = c(4.5, 4.5, 1.1, 2.1))
+qqpvalue(pv, col = "blue", cex = 0.6)
+hist(pv$`cellCD8 T cells:stimstim_pvalue`, xlab = "Model IV p-values for cellCD8 T cells:stim", col = "green", cex = 0.6, main=NA)
+
+#fileName <- "Data/model1_test.csv"
+#write.csv(cbind(Gene = rownames(test), test), file = fileName, row.names = F)
+
+par(mfrow = c(3,2), mar = c(5.1, 4.1, 3.1, 1.1))
+#par(mfrow = c(2,5), mar = c(5.1, 4.1, 3.1, 1.1)) 
+for (i in 1:ncol(pv)) {
+  main <- gsub("_pvalue", "-wildtype", colnames(pv)[i])
+  qqpvalue(pv[,i], col = "blue", cex = 0.6, main = main, cex.main = 0.8) 
+  }
+
+#dev.off()
+par(mfrow = c(3,2), mar = c(5.1, 4.1, 3.1, 1.1)) 
+for (i in 1:ncol(pv)) {
+  main <- gsub("_pvalue", "-wildtype", colnames(pv)[i])
+  hist(pv[,i], xlab = "p-values", col = "green", cex = 0.6, main = main, cex.main = 0.8) 
+  }
+
+```
+
+
+### evaluating the number of significant DE genes which had a signinficat variance component
+```{r}
+test_stim <- test_org[, grep("stim", colnames(test_org))]
+test_stim <- as.data.frame(test_stim)
+test_stim$stim_FDR <- p.adjust(test_stim$`cellCD8 T cells:stimstim_t`, method = "BH") 
+print(sum(test_stim$stim_FDR < 0.05 & p<0.05,na.rm = T))
+print(sum(test_stim$stim_FDR < 0.05 & p<0.05,na.rm = T)/sum(test_stim$stim_FDR < 0.05,na.rm = T))
+print(sum(test_stim$stim_FDR < 0.05 & p<0.05,na.rm = T)/sum(p<0.05,na.rm = T))
+
+```
+

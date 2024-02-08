@@ -9,6 +9,8 @@ library(nebula)
 pbmc <- readRDS("~/scLMM/LMM-scRNAseq//Data/PBMC_Lupus_Kang8vs8_data_counts.rds")
 dim(pbmc)
 pbmc = pbmc[rowSums(pbmc)!=0,colSums(pbmc)!=0]
+##Filtering and log-transformation
+Y <- counts[rowSums(counts > 0) >= 10 & rowSums(counts > 2) >= 5, ] 
 dim(pbmc)
 Y_pbmc = GetAssayData(pbmc)
 nGenes <- colSums(Y_pbmc)
