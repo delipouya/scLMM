@@ -9,55 +9,45 @@
 ##- REML algorithm working on columns of data matrix
 ##- Assuming the number of columns is not large
 ##- REML with FS
+
 ##Inputs
 ##Y: a matrix of observed measurements
 ##X:  a design matrix for fixed effects 
-##Z = [Z1, ..., Zk],  a design matrix for random effects 
-##  k: number of regions (kernels),
-##d = (m1,...,mk), 
-##  mi = ncol(Zi), number of columns in Zi
+##Z = [Z1, ..., Zk],  a design matrix for different types (groups) of random effects
+##  Zi, i=1,...,k, the design matrix for the i-th type (grouping) random effects
+##  Every Zi is associated with a grouping factor. 
+##  k: number of the types of the random effects
+##d = (m1,...,mk), mi = ncol(Zi), number of columns in Zi
 ##  m1 + ... + mk = ncol(Z), number of columns in Z	
-##s = (s1, ...,sk, s_{k+1}), a vector of variance components
-##  si = sigma_i^2, i = 1, ..., k
-##  s_{k+1} = sigma_0^2
-##  s0, initial values of the variance components
-##
-##Outputs
-##theta: a matrix of the variance component estimates for each sample
-##coef: a matrix of the fixed effects
+##sigma2 = (s1, ...,sk, s_{k+1}), a vector of initial values of the variance components
+##  si = sigma_i^2, the variance component of the i-th type random effects
+##  s_{k+1} = sigma^2, the variance component of model residual errors
 
+##Outputs
+##theta: a matrix of the variance component estimates for each sample (a column of Y)
+##se: standard errors of the estimated theta
+##coef: a matrix of the fixed effects (coefficients)
+##cov: a array of covariance matrices of the estimated coefficients (fixed effects)
 ##################################################
 
-lmmfit <- function(Y, X, Z, d, s0 = NULL, method = "REML-FS", max.iter = 50, epsilon = 1e-5)
+lmmfit <- function(Y, X, Z, d, sigma2 = NULL, method = "REML-FS", max.iter = 50, epsilon = 1e-5)
 {
-#Y <- as.matrix(Y)
-#X <- as.matrix(X)
-#Z <- as.matrix(Z)
-
-##XXinv = (X'X)^{-1}
-##Ynorm: Ynorm <- colSums(Y*Y) 
-##XXinv: XXinv <- ginv(t(X)%*%X)
-##XY: XY <- t(X)%*%Y
-##X: ZX <- t(Z)%*%X
-##Y: ZY <- t(Z)%*%Y
-##Z: ZZ <- t(Z)%*%Z
-
+stopifnot(!any(is.na(Y)), !any(is.na(X)), !any(is.na(Z)))
 n <- nrow(X)
+p <- ncol(X)
+k <- length(d)  
+
+stopifnot(sum(d) == ncol(Z))
 stopifnot(n == nrow(Y), n == nrow(Z))
 
 XXinv <- ginv(t(X)%*%X)
 Ynorm <- colSums(Y*Y)
 XY <- t(X)%*%Y
-
 X <- t(Z)%*%X
 Y <- t(Z)%*%Y
 Z <- t(Z)%*%Z
 
-p <- ncol(X)
-k <- length(d)  
-
-stopifnot(sum(d) == ncol(Z))
-
+##xxz = (X'X)^{-1}X'Z
 ##zrz = Z'RZ
 ##zry = Z'Ry
 ##yry = [y1'Ry1,...,ym'Rym]
@@ -66,37 +56,30 @@ zrz <- Z - X%*%(XXinv%*%t(X))
 zry <- Y - X%*%(XXinv%*%XY)
 yry <- Ynorm - colSums(XY*(XXinv%*%XY))
 
-
-##########
-##estimated variance components in iterations
-##dl: first derivatives of log likelihood
-
-niter <- NULL
-dlogL <- NULL
+niter <- NULL ##number of iterations
+dlogL <- NULL ##derivatives of log-likelihoods at the last iteration
 theta <- matrix(nrow = k + 1, ncol = ncol(XY), dimname = list(c(1:k, 0), colnames(XY)))
+se.theta <- theta
 beta <- matrix(nrow = nrow(XY), ncol = ncol(XY), dimnames = dimnames(XY))
 covbeta <- array(dim = c(nrow(XY), nrow(XY), ncol(XY)), 
 	dimnames = list(rownames(XY), rownames(XY), colnames(XY)))
 
 for (jy in 1:ncol(Y)) {
-	
-	if (is.null(s0)) {
-		s <- yry[jy]/(n-p)
-		s <- c(rep(0, k), s)
-	} else s <- s0
+	if (is.null(sigma2)) {
+		s <- c(rep(0, k), yry[jy]/(n-p))
+	} else s <- sigma2
 
 dl <- 100
 iter <- 0
-
 while ((max(abs(dl)) > epsilon)	& (iter < max.iter)){
 	iter <- iter + 1
 	
 	fs <- matrix(NA, k+1, k+1)	##Fisher scoring matrix
-	dl <- rep(NA, k+1)
-		
+	dl <- rep(NA, k+1) ##dl: derivatives of log-likelihood
+
 	sr <- s[1:k]/s[k+1]
 	##M = (SZ'RZ + I)^{-1}
-	M <- solve(sweep(zrz, 1, STATS = rep(sr, times = d), FUN = "*") + diag(sum(d)))
+	M <- ginv(sweep(zrz, 1, STATS = rep(sr, times = d), FUN = "*") + diag(sum(d)))
 	ZRZ <- zrz%*%M
 	ZR2Z <- ZRZ%*%M
 	yRZ <- t(zry[, jy])%*%M
@@ -132,40 +115,32 @@ while ((max(abs(dl)) > epsilon)	& (iter < max.iter)){
 	
 	s <- s + Minv%*%dl
 	}
+
 	
+if (max(abs(dl)) > epsilon) {
+	warningText <- paste0("The first derivatives of log likelihood for Y", jy)
+	dlText <- paste0(ifelse(abs(dl) > 1e-3, round(dl, 4), 
+		format(dl, digits = 3, scientific = TRUE)), collapse = ", ")
+	warning(paste0(warningText, ": ", dlText, ", doesn't reach the zero, epsilon ", epsilon))
+	}
+
 ##
-if (max(abs(dl)) > epsilon) warning(paste0("One of the first derivatives of log likelihood for the column ", jy, " > epsilon, ", epsilon))
-
-
-##########
 sr <- s[1:k]/s[k+1]
-M <- solve(sweep(Z, 1, STATS = rep(sr, times = d), FUN = "*") + diag(sum(d)))
+M <- ginv(sweep(Z, 1, STATS = rep(sr, times = d), FUN = "*") + diag(sum(d)))
 M <- sweep(M, 2, STATS = rep(sr, times = d), FUN = "*") 
 xvx <- XXinv + xxz%*%(ginv(diag(sum(d)) - M%*%(X%*%xxz))%*%(M%*%t(xxz)))
 xvy <- XY[, jy] - t(X)%*%(M%*%Y[, jy])
-b <- xvx%*%xvy
+b <- xvx%*%xvy ##beta, fixed effects
 covbeta[,,jy] <- (xvx + t(xvx))*(s[k+1]/2)
-
-##t-value
-#tv <- b/sqrt(abs(diag(xvx)))/s[k+1]
-#tv <- b/sqrt(abs(diag(xvx))*s[k+1])
-#pvb <- 2*pt(-abs(tv), df = n - p)
-##Wald test
-#W <- sum(xvy*b)/s[k+1]
-#pvw <- 1 - pchisq(W, df = p)
-
-##z-score
-#zs <- tv
-#tNeg <- (tv < 0)
-#zs[tNeg] <- qnorm(pt(tv[tNeg], df = n-p))
-#zs[!tNeg] <- - qnorm(pt(-tv[!tNeg], df = n-p))
 
 ##outputs
 niter <- c(niter, iter)
 theta[, jy] <- s 
+se.theta[, jy] <- sqrt(diag(Minv))
 beta[, jy] <- b 
 dlogL <- cbind(dlogL, dl)
 }
 
-list(method = method, dlogL = dlogL, niter = niter, coef = beta, cov = covbeta, df = n-p, theta = theta)
+list(method = method, dlogL = dlogL, niter = niter, 
+	coef = beta, cov = covbeta, df = n-p, theta = theta, se = se.theta)
 }

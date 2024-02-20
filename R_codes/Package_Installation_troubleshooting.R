@@ -33,8 +33,8 @@ install.packages(packageurl, repos=NULL, type="source")
 install.packages('Seurat')
 
 .libPaths()
-pkg = "Seurat" #Seurat
-pkg = 'ggridges' 
+pkg = "SeuratDisk" #Seurat
+pkg = 'roxygen2' 
 pkg = c('textshaping', 'ragg', 'pkgdown')
 pkg = 'lazyeval'
 pkg = 'DelayedArray'
@@ -45,11 +45,13 @@ pkgs = c('numDeriv', 'ggplotify','interactiveDisplayBase', 'AnnotationHub',
          'annotate', 'GSEABase', 'genefilter', 'ExperimentHub', 'scran')
 pkg = pkgs[i]
 pkg = 'ggtree'
-pkg = 'singleCellTK'
+pkg = 'pscl'
+install.packages(pkg)
+pkg='graphlayouts'
 #BiocManager::install(pkg, version = '3.15', lib =.libPaths()[1], force = TRUE)
 BiocManager::install(pkg, version = '3.18', lib =.libPaths()[1], force = TRUE)
 #testthat, xopen
-
+library('pscl')
 library(pkg)
 BiocManager::install("ggtree")
 

@@ -134,6 +134,8 @@ nGenes <- colSums(Y)
 ##nebula
 ##fixed effect desigm matrix
 X <- model.matrix(~ log(nGenes) + Cell_Types_Broad + Cell_Types_Broad:sex, data = coldata)
+X <- model.matrix(~Cell_Types_Broad + Cell_Types_Broad:sex, data = coldata)
+
 colnames(X) <- gsub("Cell_Types_Broad", "", colnames(X))
 colnames(X) <- gsub("sex", "", colnames(X))
 colnames(X) <- gsub("\\+", "p", colnames(X))
@@ -172,9 +174,12 @@ rtnebula <- difftime(t2, t1, units = timeUnits)
 print(paste0('time difference(min) is: ', difftime(t2, t1))) # "time difference(min) is: 2.84918628692627"
 print(paste0('time difference(sec) is: ', rtnebula)) #  "time difference(sec) is: 10257.0706329346"
 
-#saveRDS(negbn, 'nebula_kidneyhuman.rds')
-negbn = readRDS('~/scLMM/LMM-scRNAseq/R/nebula_kidneyhuman.rds')
+# "time difference(min) is: 2.52306820770105"
+# "time difference(sec) is: 9083.04554772377"
 
+#saveRDS(negbn, 'nebula_kidneyhuman_logGeneRemoved.rds')
+negbn = readRDS('~/scLMM/LMM-scRNAseq/R/nebula_kidneyhuman.rds')
+negbn = readRDS('~/scLMM/LMM-scRNAseq/R/nebula_kidneyhuman_logGeneRemoved.rds')
 
 ##nebula outputs
 ##summary (statistics): 
@@ -183,6 +188,22 @@ str(negbn)
 
 plot(negbn$overdispersion$Subject)
 plot(negbn$overdispersion$Cell)
+table(negbn$convergence)
+
+library(matrixStats)
+row_sums = rowSums(counts)
+row_vars = rowVars(as.matrix(counts))
+df_conv = data.frame(genes=rownames(counts), 
+                     geneSums=row_sums, 
+                     geneVars=row_vars, 
+                     convergence = as.character(negbn$convergence))
+ggplot(df_conv, aes(x=convergence,y=geneSums, fill=convergence))+geom_boxplot()+
+  ylab('gene count sum')+theme_classic()+
+  ggtitle('NEBULA convergence results on healthy kidney map\nModel:~log(nGenes)+Cell_Types_Broad+Cell_Types_Broad:sex')
+ggplot(df_conv, aes(x=convergence,y=geneVars, fill=convergence))+geom_boxplot()+
+  ylab('gene count variance')+theme_classic()+
+  ggtitle('NEBULA convergence results on healthy kidney map\nModel:~log(nGenes)+Cell_Types_Broad+Cell_Types_Broad:sex')
+
 
 ##
 ##https://github.com/lhe17/nebula
@@ -251,7 +272,12 @@ rtlmm <- difftime(t2, t1, units = timeUnits)
 table(fit$niter)
 
 
-
+sum(fit$niter==maxIter)
+hist(fit$niter)
+z = fit$theta/fit$se; z = z[-nrow(z), ] #remove the residual variances (the last row)
+p = pnorm(z, lower.tail = F)
+table(p<0.05)
+#table(p<0.01)
 ##################################################
 ##comparison of results
 
@@ -493,13 +519,65 @@ summary(df$cell_male_pval)
 df = df[order(df$cell_male_pval, decreasing=F),]
 
 #####
-a_cell_type_sex ='Proximal_Tubule:Male'
+colnames(test)
+a_cell_type_sex = 'B_cell:Male'#'Proximal_Tubule:Male'
 a_cell_type_sex_df = data.frame(genes= rownames(test),test[,grep(a_cell_type_sex, colnames(test))])
 head(a_cell_type_sex_df)
-a_cell_type_sex_df$score = -log10(a_cell_type_sex_df$Proximal_Tubule.Male_pvalue)* abs(a_cell_type_sex_df$Proximal_Tubule.Male_t)
+a_cell_type_sex = gsub(':', '.', a_cell_type_sex)
+a_cell_type_sex_df$score = -log10(a_cell_type_sex_df[[paste0(a_cell_type_sex, '_pvalue')]])* abs(a_cell_type_sex_df[[paste0(a_cell_type_sex, '_t')]])
 a_cell_type_sex_df = a_cell_type_sex_df[order(a_cell_type_sex_df$score, decreasing = T),]
 head(a_cell_type_sex_df,30)
-a_cell_type_sex_df_male = a_cell_type_sex_df[a_cell_type_sex_df$Proximal_Tubule.Male_t>0,]
-head(a_cell_type_sex_df_male, 16)
-a_cell_type_sex_df_female = a_cell_type_sex_df[a_cell_type_sex_df$Proximal_Tubule.Male_t<0,]
-head(a_cell_type_sex_df_female, 16)
+a_cell_type_sex_df_male = a_cell_type_sex_df[a_cell_type_sex_df[[paste0(a_cell_type_sex, '_t')]]>0,]
+head(a_cell_type_sex_df_male, 20)
+dev.off()
+gridExtra::grid.table(head(a_cell_type_sex_df_male, 20))
+
+a_cell_type_sex_df_female = a_cell_type_sex_df[a_cell_type_sex_df[[paste0(a_cell_type_sex, '_t')]]<0,]
+head(a_cell_type_sex_df_female, 20)
+dev.off()
+gridExtra::grid.table(head(a_cell_type_sex_df_female, 20))
+getwd()
+
+
+
+source('~/RatLiver/Codes/Functions.R')
+Initialize()
+library(gprofiler2)
+library(ggplot2)
+
+get_gprofiler_enrich <- function(markers, model_animal_name){
+  gostres <- gost(query = markers,
+                  ordered_query = TRUE, exclude_iea =TRUE, 
+                  sources=c('GO:BP' ,'REAC'),
+                  organism = model_animal_name)
+  return(gostres)
+}
+
+model_animal_name ='hsapiens'
+head(a_cell_type_sex_df_male,30)
+num_genes = 200
+
+enrich_res = get_gprofiler_enrich(markers=a_cell_type_sex_df_male$genes[1:num_genes], model_animal_name)
+head(enrich_res$result,30)
+enrich_res_pos = data.frame(enrich_res$result)
+enrich_res_pos = enrich_res_pos[1:20,]
+enrich_res_pos = enrich_res_pos[,colnames(enrich_res_pos) %in% c('term_name', 'p_value')]
+enrich_res_pos$log_p = -log(enrich_res_pos$p_value)
+title = a_cell_type_sex
+ggplot(enrich_res_pos, aes(y=term_name,x=log_p))+geom_bar(stat = 'identity')+xlab('-log(p value)')+
+  theme_classic()+ylab('')+ggtitle(paste0(title))
+
+
+num_genes = 300
+enrich_res = get_gprofiler_enrich(markers=a_cell_type_sex_df_female$genes[1:num_genes], model_animal_name)
+head(enrich_res$result,30)
+enrich_res_pos = data.frame(enrich_res$result)
+enrich_res_pos = enrich_res_pos[1:20,]
+enrich_res_pos = enrich_res_pos[,colnames(enrich_res_pos) %in% c('term_name', 'p_value')]
+enrich_res_pos$log_p = -log(enrich_res_pos$p_value)
+enrich_res_pos = enrich_res_pos[!is.na(enrich_res_pos$log_p),]
+title = gsub(pattern = 'Male', 'Female', a_cell_type_sex)
+ggplot(enrich_res_pos, aes(y=term_name,x=log_p))+geom_bar(stat = 'identity')+xlab('-log(p value)')+
+  theme_classic()+ylab('')+ggtitle(paste0(title))
+
+

@@ -1,8 +1,18 @@
 
+##########
+##Fit LMM by lmmfit
+source("~/scLMM/LMM-scRNAseq/R/lmmfit.R")
+source("~/scLMM/LMM-scRNAseq/R/lmmfitSS.R")
+source("~/scLMM/LMM-scRNAseq/R/lmmtest.R")
+source("~/scLMM/LMM-scRNAseq/R/qqpvalue.R")
+
+library(nebula)
+library(Seurat)
+library(MASS)
 ##################################################
 ##load data
 ##PBMC data
-dirData = '~/scLMM/LMM-scRNAseq-jan2024/'
+dirData = '~/scLMM/LMM-scRNAseq-jan2024/Data'
 datafile <- paste0(dirData, "/PBCMdata_ExperimentHubKang.RData")
 load(file = datafile)
 
@@ -156,11 +166,20 @@ difftime(t2, t1)
 
 timeUnits <- "secs"
 rtnebula <- difftime(t2, t1, units = timeUnits)
+print(paste0('time difference(min) is: ', difftime(t2, t1))) 
+#"time difference(min) is: 28.1434102137883"
+print(paste0('time difference(sec) is: ', rtnebula)) 
+# "time difference(sec) is: 1688.6046128273"
 
 ##nebula outputs
 ##summary (statistics): 
 ##The estimated coefficient, standard error and p-value for each predictor.
 str(negbn)
+
+#saveRDS(negbn, 'nebula_stimPBMC.rds')
+negbn = readRDS('nebula_stimPBMC.rds')
+
+
 
 plot(negbn$overdispersion$Subject)
 plot(negbn$overdispersion$Cell)
@@ -224,6 +243,7 @@ t2 <- Sys.time()
 	rtlmm <- difftime(t2, t1, units = timeUnits) 
 
 table(fit$niter)
+sum(fit$niter==maxIter)
 
 
 
@@ -375,7 +395,7 @@ for (j in jset){
 	hist(plmm[i, j], ylim = ylim, xlab = "lmmfit p-value", ylab = NULL, 
 		main = nm, cex.main = 0.8, cex.axis = 0.8, yaxt = "n")
 	}
-
+dev.off()
 
 
 ##barplot of common genes in the top
@@ -408,7 +428,7 @@ colnames(commonGenes) <- ntops
 commonGenes
 
 colset <- rainbow(nrow(commonGenes))
-
+dev.off()
 par(mar = c(5.1, 4.1, 4.1, 8.1))
 barplot(commonGenes, beside = T, ylim = c(0, 1), col = colset,
 	xlab = "Number of top genes", ylab = "Proportion of the common genes in the top")
@@ -416,6 +436,116 @@ legend("topleft", rownames(commonGenes), inset = c(1, 0), xpd = T, pch = 15,
 	col = colset, bty = "n", cex = 0.7)
 
 ##################################################
+
+##################################################
+
+##### interpretation of the results
+
+##fixed effects
+felmm <- fit$coef
+dim(felmm)
+felmm = data.frame(t(felmm))
+head(felmm)
+##variance components
+slmm <- fit$theta
+slmm = data.frame(t(slmm))
+head(slmm)
+##LMM tests
+test <- lmmtest(fit)
+dim(test)
+head(test)
+##t-values
+tvlmm <- test[, grep("_t", colnames(test)), drop = F]
+dim(tvlmm)
+head(tvlmm)
+##p-values
+plmm <- test[, grep("_pvalue", colnames(test)), drop = F]
+dim(plmm)
+head(plmm)
+colnames(plmm)
+###### p value dataframe
+i = 3
+a_cell_type_stim = colnames(plmm)[i]
+a_cell_type_stim = "Dendritic_cells:stim_pvalue"
+df = data.frame(genes=rownames(plmm),cell_stim_pval=plmm[,a_cell_type_stim])
+head(df)
+summary(df$cell_stim_pval)
+df = df[order(df$cell_stim_pval, decreasing=F),]
+head(df,30)
+
+##### t value dataframe
+df = data.frame(genes=rownames(plmm),cell_stim_tval=plmm[,a_cell_type_stim])
+head(df)
+summary(df$cell_stim_tval)
+df = df[order(df$cell_stim_tval, decreasing=F),]
+
+#####
+colnames(test)
+i = 3
+a_cell_type_stim = colnames(plmm)[i]
+a_cell_type_stim = "NK_cells:stim"
+a_cell_type_stim = 'FCGR3Ap_Monocytes:stim'#'Proximal_Tubule:Male'
+a_cell_type_stim_df = data.frame(genes= rownames(test),test[,grep(a_cell_type_stim, colnames(test))])
+head(a_cell_type_stim_df)
+a_cell_type_stim = gsub(':', '.', a_cell_type_stim)
+a_cell_type_stim_df$score = -log10(a_cell_type_stim_df[[paste0(a_cell_type_stim, '_pvalue')]]+10e-50)* abs(a_cell_type_stim_df[[paste0(a_cell_type_stim, '_t')]])
+a_cell_type_stim_df = a_cell_type_stim_df[order(a_cell_type_stim_df$score, decreasing = T),]
+head(a_cell_type_stim_df,30)
+a_cell_type_stim_df_stim = a_cell_type_stim_df[a_cell_type_stim_df[[paste0(a_cell_type_stim, '_t')]]>0,]
+head(a_cell_type_stim_df_stim, 20)
+dev.off()
+gridExtra::grid.table(head(a_cell_type_stim_df_stim, 20))
+
+a_cell_type_stim_df_control = a_cell_type_stim_df[a_cell_type_stim_df[[paste0(a_cell_type_stim, '_t')]]<0,]
+head(a_cell_type_stim_df_control, 20)
+dev.off()
+gridExtra::grid.table(head(a_cell_type_stim_df_control, 20))
+getwd()
+
+
+
+
+source('~/RatLiver/Codes/Functions.R')
+Initialize()
+library(gprofiler2)
+library(ggplot2)
+
+get_gprofiler_enrich <- function(markers, model_animal_name){
+  gostres <- gost(query = markers,
+                  ordered_query = TRUE, exclude_iea =TRUE, 
+                  sources=c('GO:BP' ,'REAC'),
+                  organism = model_animal_name)
+  return(gostres)
+}
+
+model_animal_name ='hsapiens'
+head(a_cell_type_stim_df_stim,30)
+num_genes = 200
+
+enrich_res = get_gprofiler_enrich(markers=a_cell_type_stim_df_stim$genes[1:num_genes], model_animal_name)
+head(enrich_res$result,30)
+enrich_res_pos = data.frame(enrich_res$result)
+enrich_res_pos = enrich_res_pos[1:20,]
+enrich_res_pos = enrich_res_pos[,colnames(enrich_res_pos) %in% c('term_name', 'p_value')]
+enrich_res_pos$log_p = -log(enrich_res_pos$p_value)
+title = a_cell_type_stim
+ggplot(enrich_res_pos, aes(y=term_name,x=log_p))+geom_bar(stat = 'identity')+xlab('-log(p value)')+
+  theme_classic()+ylab('')+ggtitle(paste0(title))
+
+
+num_genes = 300
+enrich_res = get_gprofiler_enrich(markers=a_cell_type_stim_df_control$genes[1:num_genes], model_animal_name)
+head(enrich_res$result,30)
+enrich_res_pos = data.frame(enrich_res$result)
+enrich_res_pos = enrich_res_pos[1:20,]
+enrich_res_pos = enrich_res_pos[,colnames(enrich_res_pos) %in% c('term_name', 'p_value')]
+enrich_res_pos$log_p = -log(enrich_res_pos$p_value)
+enrich_res_pos = enrich_res_pos[!is.na(enrich_res_pos$log_p),]
+title = gsub(pattern = 'stim', 'control', a_cell_type_stim)
+ggplot(enrich_res_pos, aes(y=term_name,x=log_p))+geom_bar(stat = 'identity')+xlab('-log(p value)')+
+  theme_classic()+ylab('')+ggtitle(paste0(title))
+
+
 
 
 	
