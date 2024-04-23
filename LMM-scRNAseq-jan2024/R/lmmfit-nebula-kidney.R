@@ -11,6 +11,7 @@ data = readRDS(file = datafile)
 
 coldata = data@meta.data
 counts = GetAssayData(data, assay = 'RNA', layer = 'counts')
+counts[1000:1010,1000:1010]
 rowSums(counts)
 
 ##'sampleID': unique sample identifiers
@@ -128,13 +129,18 @@ dim(Y)
 
 nGenes <- colSums(Y)
 
+### converting normalized counts to raw counts
+Y_raw = round(exp(Y) - 1)
+Y = Y_raw
+rm(Y_raw)
+gc()
 ##
 #rm(counts)
 
 ##nebula
 ##fixed effect desigm matrix
 X <- model.matrix(~ log(nGenes) + Cell_Types_Broad + Cell_Types_Broad:sex, data = coldata)
-X <- model.matrix(~Cell_Types_Broad + Cell_Types_Broad:sex, data = coldata)
+#X <- model.matrix(~Cell_Types_Broad + Cell_Types_Broad:sex, data = coldata)
 
 colnames(X) <- gsub("Cell_Types_Broad", "", colnames(X))
 colnames(X) <- gsub("sex", "", colnames(X))
@@ -155,7 +161,7 @@ length(Z) #[1] 27677
 ##'PMM' is for fitting a Poisson gamma mixed model. 
 ##'NBLMM' is for fitting a negative binomial lognormal mixed model (the same model as that in the lme4 package).
 
-model <- "NBLMM" #model = "NBGMM",
+model <- 'NBGMM'#"NBLMM" #model = "NBGMM",
 
 t1 <- Sys.time()
 negbn <- NULL
@@ -169,6 +175,8 @@ t2 <- Sys.time()
 difftime(t2, t1)
 #Time difference of 53.49769 mins
 
+#Error in { : task 2 failed - "objective in x0 returns NA"
+# #Error in { : task 2138 failed - "objective in x0 returns NA"
 timeUnits <- "secs"
 rtnebula <- difftime(t2, t1, units = timeUnits)
 print(paste0('time difference(min) is: ', difftime(t2, t1))) # "time difference(min) is: 2.84918628692627"
@@ -177,7 +185,20 @@ print(paste0('time difference(sec) is: ', rtnebula)) #  "time difference(sec) is
 # "time difference(min) is: 2.52306820770105"
 # "time difference(sec) is: 9083.04554772377"
 
-#saveRDS(negbn, 'nebula_kidneyhuman_logGeneRemoved.rds')
+## nebula_kidneyhuman_expcounts results 
+# [1] "time difference(min) is: 12.058542788691"
+# [1] "time difference(sec) is: 43410.7540392876"
+
+#saveRDS(negbn, '~/scLMM/LMM-scRNAseq-jan2024/nebula_kidneyhuman_expcounts_NBGMM.rds')
+negbn <- '~/scLMM/LMM-scRNAseq-jan2024/nebula_kidneyhuman_expcounts_NBGMM.rds'
+
+
+
+
+
+negbn = readRDS('~/scLMM/LMM-scRNAseq-jan2024/nebula_kidneyhuman_expcounts.rds')
+
+
 negbn = readRDS('~/scLMM/LMM-scRNAseq/R/nebula_kidneyhuman.rds')
 negbn = readRDS('~/scLMM/LMM-scRNAseq/R/nebula_kidneyhuman_logGeneRemoved.rds')
 
@@ -190,7 +211,11 @@ plot(negbn$overdispersion$Subject)
 plot(negbn$overdispersion$Cell)
 table(negbn$convergence)
 
+#-40   -25   -10     1 
+#20   402    26 12180 
+
 library(matrixStats)
+library(ggplot2)
 row_sums = rowSums(counts)
 row_vars = rowVars(as.matrix(counts))
 df_conv = data.frame(genes=rownames(counts), 
@@ -234,6 +259,7 @@ for (i in 1:ngrp){
 
 ##transpose
 Y <- t(Y)
+#Y <- t(counts)
 
 dim(Y) 
 #[1] 26820  7017
@@ -254,7 +280,7 @@ source("~/scLMM/LMM-scRNAseq/R/lmmfit.R")
 source("~/scLMM/LMM-scRNAseq/R/lmmfitSS.R")
 source("~/scLMM/LMM-scRNAseq/R/lmmtest.R")
 source("~/scLMM/LMM-scRNAseq/R/qqpvalue.R")
-
+library(MASS)
 ##Operating on "matrix" or "array"  is faster than "dgCMatrix"!!!
 Y <- as.matrix(Y)
 
@@ -300,6 +326,7 @@ slmm <- fit$theta
 test <- lmmtest(fit)
 dim(test)
 head(test)
+saveRDS(test, '~/scLMM/LMM-scRNAseq-jan2024/sclmm_test_kidneyhuman_expcounts.rds')
 
 ##t-values
 tvlmm <- test[, grep("_t", colnames(test)), drop = F]
@@ -408,19 +435,29 @@ jset <- grep(":Male", colnames(pv))
 nc <- round(sqrt(length(jset)))
 nr <- ceiling(length(jset)/nc)
 par(mfrow = c(nr, nc), mar = c(5.1,4.1,2.1,1.1))
-for (j in jset){
+for (j in jset[1:15]){
   nm <- gsub("p", "+", gsub("_t", "", colnames(tvlmm)[j]))
   plot(tvlmm[i,j], tv[i,j], cex = 0.6,
        xlab = "lmmfit t-values", ylab = "nebula t-values", main = nm, cex.main = 0.8)
   abline(0,1)
 }
 
+j = jset[1:15][1]
+head(tvlmm)
+head(tv)
+
+colnames(tvlmm)[j]
+colnames(tv)[j]
+
+tvlmm[i,j]
+tv[i,j]
+
 
 ##histograms of p-values
 jset <- grep(":Male", colnames(pv))
 length(jset)
 par(mfrow = c(4, 4))
-for (j in jset){
+for (j in jset[15:length(jset)]){
   h1 <- hist(pv[i,j], plot = F)
   h2 <- hist(plmm[i,j], plot = F)
   ylim <- c(0, 1.1*max(h1$counts, h2$counts))
